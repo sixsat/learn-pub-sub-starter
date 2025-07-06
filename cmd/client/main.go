@@ -47,7 +47,7 @@ func main() {
 		routing.WarRecognitionsPrefix,
 		routing.WarRecognitionsPrefix+".*",
 		pubsub.QTypeDurable,
-		handlerWar(gs),
+		handlerWar(gs, pubCh),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to war declarations: %v", err)

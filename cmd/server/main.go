@@ -23,17 +23,17 @@ func main() {
 		log.Fatalf("could not open a channel: %v", err)
 	}
 
-	_, queue, err := pubsub.DeclareAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		routing.GameLogSlug+".*",
 		pubsub.QTypeDurable,
+		handlerLogs(),
 	)
 	if err != nil {
-		log.Fatalf("could not subscribe to pause: %v", err)
+		log.Fatalf("could not start consuming logs: %v", err)
 	}
-	log.Printf("Queue %s declared and bound!\n", queue.Name)
 	gamelogic.PrintServerHelp()
 
 	// server REPL (read-eval-print loop)
