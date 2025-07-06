@@ -18,24 +18,53 @@ func main() {
 	defer conn.Close()
 	log.Println("Peril game client connected to RabbitMQ!")
 
+	pubCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("could not create channel: %v", err)
+	}
+
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("could not get username: %v", err)
 	}
+	gs := gamelogic.NewGameState(username)
 
-	_, queue, err := pubsub.DeclareAndBind(
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+gs.GetUsername(),
+		routing.ArmyMovesPrefix+".*",
+		pubsub.QTypeTransient,
+		handlerMove(gs, pubCh),
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to army moves: %v", err)
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.QTypeDurable,
+		handlerWar(gs),
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to war declarations: %v", err)
+	}
+
+	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
-		routing.PauseKey+"."+username,
+		routing.PauseKey+"."+gs.GetUsername(),
 		routing.PauseKey,
 		pubsub.QTypeTransient,
+		handlerPause(gs),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to pause: %v", err)
 	}
-	log.Printf("Queue %s declared and bound!\n", queue.Name)
 
-	gs := gamelogic.NewGameState(username)
 	// client REPL (read-eval-print loop)
 	for {
 		words := gamelogic.GetInput()
@@ -44,12 +73,22 @@ func main() {
 		}
 		switch words[0] {
 		case "move":
-			_, err := gs.CommandMove(words)
+			mv, err := gs.CommandMove(words)
 			if err != nil {
 				log.Println(err)
 				continue
 			}
-			// TODO: publish the move
+			err = pubsub.PublishJSON(
+				pubCh,
+				routing.ExchangePerilTopic,
+				routing.ArmyMovesPrefix+"."+mv.Player.Username,
+				mv,
+			)
+			if err != nil {
+				log.Printf("error publish message: %v\n", err)
+				continue
+			}
+			log.Printf("moved %d units to %s\n", len(mv.Units), mv.ToLocation)
 		case "spawn":
 			err = gs.CommandSpawn(words)
 			if err != nil {
