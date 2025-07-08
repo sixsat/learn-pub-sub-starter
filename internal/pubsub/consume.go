@@ -122,6 +122,11 @@ func subscribe[T any](
 		return err
 	}
 
+	err = ch.Qos(10, 0, false)
+	if err != nil {
+		return fmt.Errorf("could not set QoS: %v", err)
+	}
+
 	msgs, err := ch.Consume(
 		q.Name, // queue
 		"",     // consumer
